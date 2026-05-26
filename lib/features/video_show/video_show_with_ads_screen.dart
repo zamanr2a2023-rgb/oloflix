@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'logic/video_controler.dart';
 import 'logic/player_ads_provider.dart';
@@ -29,7 +28,6 @@ class VideoShowWithAdsScreen extends ConsumerStatefulWidget {
 class _VideoShowWithAdsScreenState extends ConsumerState<VideoShowWithAdsScreen> {
   VideoPlayerController? _adController;
   bool _isPlayingAd = false;
-  bool _isLoggedIn = false;
   PlayerAdsResponse? _adsResponse;
   Set<int> _playedAds = {};
   VideoPlayerController? _mainController;
@@ -50,24 +48,16 @@ class _VideoShowWithAdsScreenState extends ConsumerState<VideoShowWithAdsScreen>
     _initializeAdSystem();
   }
 
-  // Initialize ad system with proper async handling
+  // Ads are enabled for ALL users (guest + logged in) on every video
   Future<void> _initializeAdSystem() async {
     try {
-      // Step 1: Check login status first (must complete before ads)
-      await _checkLoginStatus();
-      
-      // Step 2: Initialize ads if user is not logged in
-      if (!_isLoggedIn) {
-        await _initializeAds();
-        
-        // Step 3: Pre-load first ad if it exists and is at start of video
-        await _preloadFirstAd();
-      }
-      
+      await _initializeAds();
+      await _preloadFirstAd();
+
       setState(() {
         _adSystemReady = true;
       });
-      
+
       print('✅ Ad system fully initialized and ready');
     } catch (e) {
       print('❌ Error initializing ad system: $e');
@@ -77,31 +67,7 @@ class _VideoShowWithAdsScreenState extends ConsumerState<VideoShowWithAdsScreen>
     }
   }
 
-  Future<void> _checkLoginStatus() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token') ?? '';
-      _isLoggedIn = token.isNotEmpty;
-      
-      print('🔐 Login status checked: ${_isLoggedIn ? "Logged In" : "Guest"}');
-      
-      if (_isLoggedIn) {
-        print('✅ User logged in - Ads will be DISABLED');
-      } else {
-        print('👤 Guest user - Ads will be ENABLED');
-      }
-    } catch (e) {
-      print('❌ Error checking login status: $e');
-      _isLoggedIn = false;
-    }
-  }
-
   Future<void> _initializeAds() async {
-    if (_isLoggedIn) {
-      print('🚫 Skipping ad initialization - User is logged in');
-      return;
-    }
-
     try {
       print('🔄 Loading ads from provider...');
       
@@ -267,7 +233,7 @@ class _VideoShowWithAdsScreenState extends ConsumerState<VideoShowWithAdsScreen>
   }
 
   void _setupMainVideoListener() {
-    if (_mainController == null || _listenerAdded || _isLoggedIn) {
+    if (_mainController == null || _listenerAdded) {
       return;
     }
 
@@ -285,8 +251,8 @@ class _VideoShowWithAdsScreenState extends ConsumerState<VideoShowWithAdsScreen>
   }
 
   void _checkAndPlayAd(Duration currentPosition) {
-    // Don't check for ads if logged in or already playing an ad
-    if (_isLoggedIn || _isPlayingAd || _adsResponse == null) {
+    // Don't check for ads if already playing an ad or ads not loaded
+    if (_isPlayingAd || _adsResponse == null) {
       return;
     }
 
@@ -497,8 +463,8 @@ class _VideoShowWithAdsScreenState extends ConsumerState<VideoShowWithAdsScreen>
               );
             }
 
-            // Show loading while ad system initializes (only for guest users)
-            if (!_isLoggedIn && !_adSystemReady) {
+            // Show loading while ad system initializes
+            if (!_adSystemReady) {
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -515,7 +481,7 @@ class _VideoShowWithAdsScreenState extends ConsumerState<VideoShowWithAdsScreen>
             }
 
             // Setup listener for ad checks (only once)
-            if (!_isLoggedIn && !_listenerAdded && _adSystemReady) {
+            if (!_listenerAdded && _adSystemReady) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 _setupMainVideoListener();
               });

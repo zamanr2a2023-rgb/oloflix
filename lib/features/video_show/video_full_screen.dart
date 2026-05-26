@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'logic/player_ads_provider.dart';
 import 'models/player_ads_model.dart';
@@ -26,7 +25,6 @@ class _FullScreenPlayerState extends ConsumerState<FullScreenPlayer> {
   // Ad system variables
   VideoPlayerController? _adController;
   bool _isPlayingAd = false;
-  bool _isLoggedIn = false;
   PlayerAdsResponse? _adsResponse;
   Set<int> _playedAds = {};
   bool _canSkipAd = false;
@@ -43,8 +41,7 @@ class _FullScreenPlayerState extends ConsumerState<FullScreenPlayer> {
       DeviceOrientation.landscapeRight,
     ]);
     
-    // Initialize ad system
-    _checkLoginStatus();
+    // Initialize ad system (enabled for ALL users on every video)
     _initializeAds();
     _setupAdListener();
   }
@@ -60,34 +57,7 @@ class _FullScreenPlayerState extends ConsumerState<FullScreenPlayer> {
     super.dispose();
   }
   
-  Future<void> _checkLoginStatus() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token') ?? '';
-      setState(() {
-        _isLoggedIn = token.isNotEmpty;
-      });
-      print('🔐 Fullscreen - Login status: ${_isLoggedIn ? "Logged In" : "Guest"}');
-      
-      if (_isLoggedIn) {
-        print('✅ User logged in - Ads DISABLED in fullscreen');
-      } else {
-        print('👤 Guest user - Ads ENABLED in fullscreen');
-      }
-    } catch (e) {
-      print('❌ Error checking login status: $e');
-      setState(() {
-        _isLoggedIn = false;
-      });
-    }
-  }
-
   Future<void> _initializeAds() async {
-    if (_isLoggedIn) {
-      print('🚫 Skipping ad initialization - User is logged in');
-      return;
-    }
-
     final adsAsync = ref.read(playerAdsProvider);
     adsAsync.when(
       data: (adsResponse) {
@@ -106,20 +76,18 @@ class _FullScreenPlayerState extends ConsumerState<FullScreenPlayer> {
   }
 
   void _setupAdListener() {
-    if (_isLoggedIn) return;
-    
     widget.controller.addListener(() {
-      if (!mounted || _isLoggedIn || _isPlayingAd) return;
-      
+      if (!mounted || _isPlayingAd) return;
+
       final currentPosition = widget.controller.value.position;
       _checkAndPlayAd(currentPosition);
     });
-    
+
     print('✅ Fullscreen video listener added for ad checks');
   }
 
   void _checkAndPlayAd(Duration currentPosition) {
-    if (_isLoggedIn || _isPlayingAd || _adsResponse == null) {
+    if (_isPlayingAd || _adsResponse == null) {
       return;
     }
 
